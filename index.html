@@ -29,7 +29,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">CRoaring
-   &#160;<span id="projectnumber">1.3.0</span>
+   &#160;<span id="projectnumber">2.0.2</span>
    </div>
    <div id="projectbrief">Roaring bitmaps in C (and C++)</div>
   </td>
@@ -92,7 +92,7 @@ $(document).ready(function(){initNavTree('index.html',''); initResizable(); });
 <div class="contents">
 <div class="textblock"><p><a class="anchor" id="md_README"></a> <a href="https://github.com/RoaringBitmap/CRoaring/actions/workflows/ubuntu-noexcept-ci.yml"><img src="https://github.com/RoaringBitmap/CRoaring/actions/workflows/ubuntu-noexcept-ci.yml/badge.svg" alt="Ubuntu-CI" style="pointer-events: none;" class="inline"/></a> <a href="https://github.com/RoaringBitmap/CRoaring/actions/workflows/vs17-ci.yml"><img src="https://github.com/RoaringBitmap/CRoaring/actions/workflows/vs17-ci.yml/badge.svg" alt="VS17-CI" style="pointer-events: none;" class="inline"/></a> <a href="https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&amp;can=1&amp;q=proj:croaring"><img src="https://oss-fuzz-build-logs.storage.googleapis.com/badges/croaring.svg" alt="Fuzzing Status" style="pointer-events: none;" class="inline"/></a></p>
 <p><a href="http://roaringbitmap.github.io/CRoaring/"><img src="https://img.shields.io/badge/docs-doxygen-green.svg" alt="Doxygen Documentation" style="pointer-events: none;" class="inline"/></a></p>
-<p>Portable Roaring bitmaps in C (and C++) with full support for your favorite compiler (GNU GCC, LLVM's clang, Visual Studio). Included in the <a href="https://github.com/kozross/awesome-c">Awesome C</a> list of open source C software.</p>
+<p>Portable Roaring bitmaps in C (and C++) with full support for your favorite compiler (GNU GCC, LLVM's clang, Visual Studio, Apple Xcode, Intel oneAPI). Included in the <a href="https://github.com/kozross/awesome-c">Awesome C</a> list of open source C software.</p>
 <h1><a class="anchor" id="autotoc_md1"></a>
 Introduction</h1>
 <p>Bitsets, also called bitmaps, are commonly used as fast data structures. Unfortunately, they can use too much memory. To compensate, we often use compressed bitmaps.</p>
@@ -115,7 +115,7 @@ Requirements</h1>
 <ul>
 <li>Linux, macOS, FreeBSD, Windows (MSYS2 and Microsoft Visual studio).</li>
 <li>We test the library with ARM, x64/x86 and POWER processors. We only support little endian systems (big endian systems are vanishingly rare).</li>
-<li>Recent C compiler supporting the C11 standard (GCC 7 or better, LLVM 7.0 or better, Xcode 11 or better, Microsoft Visual Studio 2022 or better), there is also an optional C++ class that requires a C++ compiler supporting the C++11 standard.</li>
+<li>Recent C compiler supporting the C11 standard (GCC 7 or better, LLVM 7.0 or better, Xcode 11 or better, Microsoft Visual Studio 2022 or better, Intel oneAPI Compiler 2023.2 or better), there is also an optional C++ class that requires a C++ compiler supporting the C++11 standard.</li>
 <li>CMake (to contribute to the project, users can rely on amalgamation/unity builds if they do not wish to use CMake).</li>
 <li>Under x64 systems, the library provides runtime dispatch so that optimized functions are called based on the detected CPU features. It works with GCC, clang (version 9 and up) and Visual Studio (2017 and up). Other systems (e.g., ARM) do not need runtime dispatch.</li>
 </ul>
@@ -318,12 +318,15 @@ Example (C)</h1>
 <div class="line">    uint32_t expectedsize = roaring_bitmap_portable_size_in_bytes(r1);</div>
 <div class="line">    <span class="keywordtype">char</span> *serializedbytes = malloc(expectedsize);</div>
 <div class="line">    roaring_bitmap_portable_serialize(r1, serializedbytes);</div>
-<div class="line">    <span class="comment">// For additional safety, you may replace roaring_bitmap_portable_deserialize by</span></div>
-<div class="line">    <span class="comment">// roaring_bitmap_portable_deserialize_safe.</span></div>
 <div class="line">    <span class="comment">// Note: it is expected that the input follows the specification</span></div>
 <div class="line">    <span class="comment">// https://github.com/RoaringBitmap/RoaringFormatSpec</span></div>
 <div class="line">    <span class="comment">// otherwise the result may be unusable.</span></div>
-<div class="line">    roaring_bitmap_t *t = roaring_bitmap_portable_deserialize(serializedbytes);</div>
+<div class="line">    roaring_bitmap_t *t = roaring_bitmap_portable_deserialize_safe(serializedbytes, expectedsize);</div>
+<div class="line">    <span class="keywordflow">if</span>(t == NULL) { <span class="keywordflow">return</span> EXIT_FAILURE; }</div>
+<div class="line">    <span class="keyword">const</span> <span class="keywordtype">char</span> *reason = NULL;</div>
+<div class="line">    <span class="keywordflow">if</span> (!roaring_bitmap_internal_validate(t, &amp;reason)) {</div>
+<div class="line">        <span class="keywordflow">return</span> EXIT_FAILURE;</div>
+<div class="line">    }</div>
 <div class="line">    assert(roaring_bitmap_equals(r1, t));  <span class="comment">// what we recover is equal</span></div>
 <div class="line">    roaring_bitmap_free(t);</div>
 <div class="line">    <span class="comment">// we can also check whether there is a bitmap at a memory location without</span></div>
@@ -334,6 +337,18 @@ Example (C)</h1>
 <div class="line">           expectedsize);  <span class="comment">// sizeofbitmap would be zero if no bitmap were found</span></div>
 <div class="line">    <span class="comment">// we can also read the bitmap &quot;safely&quot; by specifying a byte size limit:</span></div>
 <div class="line">    t = roaring_bitmap_portable_deserialize_safe(serializedbytes, expectedsize);</div>
+<div class="line">    <span class="keywordflow">if</span>(t == NULL) {</div>
+<div class="line">        printf(<span class="stringliteral">&quot;Problem during deserialization.\n&quot;</span>);</div>
+<div class="line">        <span class="comment">// We could clear any memory and close any file here.</span></div>
+<div class="line">        <span class="keywordflow">return</span> EXIT_FAILURE;</div>
+<div class="line">    }</div>
+<div class="line">    <span class="comment">// We can validate the bitmap we recovered to make sure it is proper.</span></div>
+<div class="line">    <span class="keyword">const</span> <span class="keywordtype">char</span> *reason_failure = NULL;</div>
+<div class="line">    <span class="keywordflow">if</span> (!roaring_bitmap_internal_validate(t, &amp;reason_failure)) {</div>
+<div class="line">        printf(<span class="stringliteral">&quot;safely deserialized invalid bitmap: %s\n&quot;</span>, reason_failure);</div>
+<div class="line">        <span class="comment">// We could clear any memory and close any file here.</span></div>
+<div class="line">        <span class="keywordflow">return</span> EXIT_FAILURE;</div>
+<div class="line">    }</div>
 <div class="line">    <span class="comment">// It is still necessary for the content of seriallizedbytes to follow</span></div>
 <div class="line">    <span class="comment">// the standard: https://github.com/RoaringBitmap/RoaringFormatSpec</span></div>
 <div class="line">    <span class="comment">// This is guaranted when calling &#39;roaring_bitmap_portable_deserialize&#39;.</span></div>
